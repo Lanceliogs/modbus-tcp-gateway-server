@@ -1,13 +1,6 @@
 #include "server.h"
-#include "config.h"
-
-extern "C"
-{
-#include <sys/un.h>
-}
 
 #include <iostream>
-#include <fstream>
 
 using namespace ModbusTCP;
 
@@ -23,6 +16,28 @@ static void __signalCallbackHandler(int signum)
     __exit = true;
 }
 
+#ifdef WIN32
+// Windows specific definitions
+// I should probably add some WSA stuff
+using socklen_t = int; // socklen_t is defined in Unix systems.
+// Windows uses int.
+
+// closesocket vs close
+inline int __close(int socket)
+{
+    return closesocket(socket);
+}
+
+#else
+// Unix specific definitions
+#include "config.h"
+
+inline int __close(int socket)
+{
+    return close(socket);
+}
+
+// Used to work with the notificatiion socket in unix systems
 void __notifySystemdReady()
 {
     // We call directly the notification socket as uwsgi does:
@@ -85,13 +100,17 @@ void __notifySystemdReady()
     close(sd_notif_fd);
 }
 
+#endif
+
+
+
 // Now the server class
 
 Server::Server() : m_ctx(nullptr),
-                   m_port(0),
-                   m_mapping(nullptr),
-                   m_server(0),
-                   m_headerLength(0)
+    m_port(0),
+    m_mapping(nullptr),
+    m_server(0),
+    m_headerLength(0)
 {
 }
 
@@ -106,7 +125,7 @@ void Server::finalize()
 
     // Closing server socket
     if (m_server != -1)
-        close(m_server);
+        __close(m_server);
 
     // Free Modbus resources
     modbus_mapping_free(m_mapping);
@@ -168,8 +187,13 @@ int Server::serveForever(bool notify_systemd)
 
     // Sending to systemd that the service is ready
     std::cout << "Serving forever..." << std::endl;
+
+#ifdef WIN32
+    (void)notify_systemd;
+#else
     if (notify_systemd)
         __notifySystemdReady();
+#endif
 
     int rc;
     int header;
@@ -192,7 +216,7 @@ int Server::serveForever(bool notify_systemd)
         if (__exit)
             break;
 
-        // Run through the existing connections lloking for data to read
+        // Run through the existing connections looking for data to read
         for (masterSocket = 0; masterSocket <= m_fdmax; masterSocket++)
         {
 
@@ -238,7 +262,7 @@ int Server::serveForever(bool notify_systemd)
                 if (rc == -1)
                 {
                     std::cout << "Connection closed on socket " << masterSocket << std::endl;
-                    close(masterSocket);
+                    __close(masterSocket);
 
                     /* Remove from reference set */
                     FD_CLR(masterSocket, &m_refset);

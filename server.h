@@ -11,7 +11,8 @@
 #include <signal.h>
 
 #ifdef WIN32
-#include <modbus.h>
+#include <winsock2.h>
+#include <modbus/modbus.h>
 #else
 #include <errno.h>
 #include <modbus/modbus.h>
@@ -19,6 +20,10 @@
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+extern "C"
+{
+#include <sys/un.h>
+}
 #endif
 
 namespace ModbusTCP {
